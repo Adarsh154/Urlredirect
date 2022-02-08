@@ -77,6 +77,6 @@ def read_from_redis():
 
 # driver function
 if __name__ == '__main__':
-    client = redis.StrictRedis('localhost', 6379, charset="utf-8", decode_responses=True)
+    client = redis.StrictRedis('redis', 6379, charset="utf-8", decode_responses=True)
     stored_urls = read_from_redis()
     app.run(debug=True, host="0.0.0.0")
