@@ -29,6 +29,8 @@ class ShortUrl(Resource):
     # corresponds to the GET request.
     def get(self):
         url = request.args.get("url")
+        if not url:
+            return {'message': 'Url parameter not passed'}, 400
         if url in stored_urls.keys():
             return {"Success": "Your short url is " + BaseUrl + stored_urls[request.get_json()['url']]}, 200
         else:
