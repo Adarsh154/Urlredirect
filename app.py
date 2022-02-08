@@ -33,7 +33,7 @@ class ShortUrl(Resource):
         urls1 = read_from_file()
         url = request.args.get("url")
         if url in urls1.keys():
-            return {"Success": "Your short url is " + BaseUrl + urls1[request.get_json()['url']]}
+            return {"Success": "Your short url is " + BaseUrl + urls1[request.get_json()['url']]}, 200
         else:
             return {"Error_msg": "Url not found"}, 400
 
@@ -45,6 +45,15 @@ class ShortUrl(Resource):
         urls1[request.get_json()['url']] = make_short_url()
         write_to_file(urls1)
         return {"Success": "Your short url is " + BaseUrl + urls1[request.get_json()['url']]}, 201
+
+    # Corresponds to put request
+    def put(self):
+        if request.get_json()['url'] in urls1.keys():
+            urls1[request.get_json()['url']] = make_short_url()
+            write_to_file(urls1)
+            return {"Success": "Your short url is changed to " +BaseUrl + urls1[request.get_json()['url']]}, 201
+        else:
+            return {"Error_msg": "Url not found, make a post request"}, 400
 
 
 class ServeUrl(Resource):
