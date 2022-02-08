@@ -1,88 +1,82 @@
 # using flask_restful
-import json
 import string
-from os import path
 import random
 
-from flask import Flask, jsonify, request, redirect
+import redis
+from flask import Flask, request, redirect
 from flask_restful import Resource, Api
 
 # creating the flask app
 app = Flask(__name__)
 # creating an API object
 api = Api(app)
-urls1 = dict()
+stored_urls = dict()
 BaseUrl = "http://127.0.0.1:5000/shortly/"
-
-
-def make_short_url():
-    random_short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-    while True:
-        if random_short_url in urls1.values():
-            random_short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-        else:
-            break
-    return random_short_url
 
 
 class ShortUrl(Resource):
 
+    @staticmethod
+    def make_short_url():
+        random_short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        while True:
+            if random_short_url in stored_urls.values():
+                random_short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+            else:
+                break
+        return random_short_url
+
     # corresponds to the GET request.
     def get(self):
-        global urls1
-        urls1 = read_from_file()
         url = request.args.get("url")
-        if url in urls1.keys():
-            return {"Success": "Your short url is " + BaseUrl + urls1[request.get_json()['url']]}, 200
+        if url in stored_urls.keys():
+            return {"Success": "Your short url is " + BaseUrl + stored_urls[request.get_json()['url']]}, 200
         else:
             return {"Error_msg": "Url not found"}, 400
 
     # Corresponds to POST request
     def post(self):
-        if request.get_json()['url'] in urls1.keys():
-            return {"Error_msg": "Url already shortened as " + BaseUrl + urls1[request.get_json()['url']]}, 400
+        if request.get_json()['url'] in stored_urls.keys():
+            return {"Error_msg": "Url already shortened as " + BaseUrl + stored_urls[request.get_json()['url']]}, 400
 
-        urls1[request.get_json()['url']] = make_short_url()
-        write_to_file(urls1)
-        return {"Success": "Your short url is " + BaseUrl + urls1[request.get_json()['url']]}, 201
+        stored_urls[request.get_json()['url']] = ShortUrl.make_short_url()
+        write_to_redis()
+        return {"Success": "Your short url is " + BaseUrl + stored_urls[request.get_json()['url']]}, 201
 
     # Corresponds to put request
     def put(self):
-        if request.get_json()['url'] in urls1.keys():
-            urls1[request.get_json()['url']] = make_short_url()
-            write_to_file(urls1)
-            return {"Success": "Your short url is changed to " +BaseUrl + urls1[request.get_json()['url']]}, 201
+        if request.get_json()['url'] in stored_urls.keys():
+            stored_urls[request.get_json()['url']] = ShortUrl.make_short_url()
+            write_to_redis()
+            return {"Success": "Your short url is changed to " + BaseUrl + stored_urls[request.get_json()['url']]}, 201
         else:
             return {"Error_msg": "Url not found, make a post request"}, 400
 
 
 class ServeUrl(Resource):
 
-    def get(self, id):
-        for k, v in urls1.items():
-            if v == id:
+    def get(self, ids):
+        for k, v in stored_urls.items():
+            if v == ids:
                 return redirect(k, code=302)
         else:
-            return jsonify({'message': 'Page Not Found'})
+            return {'message': 'Page Not Found'}, 400
 
 
 api.add_resource(ShortUrl, '/genUrl')
-api.add_resource(ServeUrl, '/shortly/<string:id>')
+api.add_resource(ServeUrl, '/shortly/<string:ids>')
 
 
-def write_to_file(data):
-    with open("urls.json", "w") as f:
-        json.dump(data, f, indent=2)
+def write_to_redis():
+    client.hmset("urls", stored_urls)
 
 
-def read_from_file():
-    with open("urls.json") as f:
-        return json.load(f)
+def read_from_redis():
+    return client.hgetall("urls")
 
 
 # driver function
 if __name__ == '__main__':
-    if not path.exists("urls.json"):
-        write_to_file(dict())
-    urls1 = read_from_file()
-    app.run(debug=True)
+    client = redis.StrictRedis('localhost', 6379, charset="utf-8", decode_responses=True)
+    stored_urls = read_from_redis()
+    app.run(debug=True, host="0.0.0.0")
