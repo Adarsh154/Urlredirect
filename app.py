@@ -10,7 +10,6 @@ from flask_restful import Resource, Api
 app = Flask(__name__)
 # creating an API object
 api = Api(app)
-stored_urls = dict()
 BaseUrl = "http://127.0.0.1:5000/shortly/"
 
 
@@ -20,7 +19,8 @@ class ShortUrl(Resource):
     def make_short_url():
         random_short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
         while True:
-            if random_short_url in stored_urls.values():
+            is_present = get_key_from_values(random_short_url)
+            if is_present:
                 random_short_url = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
             else:
                 break
@@ -31,26 +31,30 @@ class ShortUrl(Resource):
         url = request.args.get("url")
         if not url:
             return {'message': 'Url parameter not passed'}, 400
-        if url in stored_urls.keys():
-            return {"Success": "Your short url is " + BaseUrl + stored_urls[request.get_json()['url']]}, 200
+        key = read_from_redis(url)
+        if key:
+            return {"Success": "Your short url is " + BaseUrl + key}, 200
         else:
             return {"Error_msg": "Url not found"}, 400
 
     # Corresponds to POST request
     def post(self):
-        if request.get_json()['url'] in stored_urls.keys():
-            return {"Error_msg": "Url already shortened as " + BaseUrl + stored_urls[request.get_json()['url']]}, 400
-
-        stored_urls[request.get_json()['url']] = ShortUrl.make_short_url()
-        write_to_redis()
-        return {"Success": "Your short url is " + BaseUrl + stored_urls[request.get_json()['url']]}, 201
+        url = request.get_json()['url']
+        key = read_from_redis(url)
+        if key:
+            return {"Error_msg": "Url already shortened as " + BaseUrl + key}, 400
+        random_id = ShortUrl.make_short_url()
+        write_to_redis(url, random_id)
+        return {"Success": "Your short url is " + BaseUrl + random_id}, 201
 
     # Corresponds to put request
     def put(self):
-        if request.get_json()['url'] in stored_urls.keys():
-            stored_urls[request.get_json()['url']] = ShortUrl.make_short_url()
-            write_to_redis()
-            return {"Success": "Your short url is changed to " + BaseUrl + stored_urls[request.get_json()['url']]}, 201
+        url = request.get_json()['url']
+        key = read_from_redis(url)
+        if key:
+            random_id = ShortUrl.make_short_url()
+            write_to_redis(url, random_id)
+            return {"Success": "Your short url is changed to " + BaseUrl + random_id}, 201
         else:
             return {"Error_msg": "Url not found, make a post request"}, 400
 
@@ -58,9 +62,9 @@ class ShortUrl(Resource):
 class ServeUrl(Resource):
 
     def get(self, ids):
-        for k, v in stored_urls.items():
-            if v == ids:
-                return redirect(k, code=302)
+        key = get_key_from_values(ids)
+        if key:
+            return redirect(key, code=302)
         else:
             return {'message': 'Page Not Found'}, 400
 
@@ -69,16 +73,22 @@ api.add_resource(ShortUrl, '/genUrl')
 api.add_resource(ServeUrl, '/shortly/<string:ids>')
 
 
-def write_to_redis():
-    client.hmset("urls", stored_urls)
+def write_to_redis(url, value):
+    client.set(url, value)
 
 
-def read_from_redis():
-    return client.hgetall("urls")
+def read_from_redis(url):
+    return client.get(url)
+
+
+def get_key_from_values(value):
+    for key in client.keys():
+        if value == client.get(key):
+            return key
+    return None
 
 
 # driver function
 if __name__ == '__main__':
-    client = redis.StrictRedis('redis', 6379, charset="utf-8", decode_responses=True)
-    stored_urls = read_from_redis()
-    app.run(debug=True, host="0.0.0.0")
+    client = redis.StrictRedis('localhost', 6379, charset="utf-8", decode_responses=True)
+    app.run(debug=True)
